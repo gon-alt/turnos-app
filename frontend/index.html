@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Turnos Tattoo</title>
+
+  <!-- Flatpickr CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
+
+  <style>
+    :root {
+      --rosa: #e91e63;
+      --gris-oscuro: #111;
+      --blanco: #eee;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: sans-serif;
+      background: var(--gris-oscuro);
+      color: var(--blanco);
+      padding: 2rem;
+      margin: 0;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1, h2 {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="tel"],
+    button {
+      display: block;
+      width: 90%;
+      max-width: 400px;
+      margin: 0.5rem auto;
+      padding: 0.75rem;
+      font-size: 1rem;
+      border: none;
+      border-radius: 5px;
+    }
+
+    .flatpickr-day.available {
+      background: #4caf50 !important;
+      color: #fff !important;
+      border-radius: 50%;
+    }
+
+    #horarios {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #horarios h2 {
+      margin-bottom: 1rem;
+    }
+
+    .horario-btn {
+      margin: 0.3rem;
+      padding: 0.6rem 1.2rem;
+      background: var(--rosa);
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 1rem;
+      text-align: center;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 1rem;
+      }
+
+      h1, h2 {
+        font-size: 1.2rem;
+      }
+
+      input, button, .horario-btn {
+        font-size: 1rem;
+        width: 95%;
+      }
+
+      .horario-btn {
+        padding: 0.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Reservá tu turno de tattoo</h1>
+  <input type="text" id="datepicker" placeholder="Seleccioná un día" readonly>
+
+  <div id="horarios" style="display:none;">
+    <h2>Seleccioná un horario</h2>
+  </div>
+
+  <div id="formulario" style="display:none;">
+    <h2>Completá tus datos</h2>
+    <form id="reservaForm">
+      <input type="text" name="nombre" placeholder="Tu nombre" required>
+      <input type="email" name="email" placeholder="Tu email" required>
+      <input type="tel" name="telefono" placeholder="Tu teléfono" required>
+      <button type="submit">Reservar y pagar</button>
+    </form>
+  </div>
+
+  <script>
+    let diasDisponibles = {};
+    let linksDePago = {};
+
+    const horariosDiv = document.getElementById("horarios");
+    const formulario = document.getElementById("formulario");
+
+    let diaSeleccionado = "";
+    let horaSeleccionada = "";
+
+    async function cargarTurnosDesdeAPI() {
+      try {
+        const response = await fetch('http://localhost:3001/api/turnos');
+        const data = await response.json();
+
+        diasDisponibles = {};
+        linksDePago = {};
+
+        data.forEach(evento => {
+          const fecha = evento.start.dateTime.split("T")[0];
+          const hora = new Date(evento.start.dateTime).toLocaleTimeString("es-AR", {
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+
+          if (!diasDisponibles[fecha]) diasDisponibles[fecha] = [];
+          diasDisponibles[fecha].push(hora);
+
+          //linksDePago[`${fecha}_${hora}`] = evento.description || "https://mpago.la/backup";
+        });
+
+        inicializarCalendario();
+      } catch (error) {
+        console.error("Error al cargar turnos desde la API:", error);
+        alert("No se pudieron cargar los turnos.");
+      }
+    }
+
+    function obtenerFechaConNombreDelDia(fechaStr) {
+      const dias = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+      const fecha = new Date(
+        new Date(fechaStr).toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" })
+      );
+      const diaSemana = dias[fecha.getDay()];
+      const [año, mes, dia] = fechaStr.split("-");
+      return `${diaSemana} ${dia}/${mes}/${año}`;
+    }
+
+    function inicializarCalendario() {
+      const fechasHabilitadas = Object.keys(diasDisponibles);
+
+      flatpickr("#datepicker", {
+        dateFormat: "Y-m-d",
+        locale: "es",
+        disable: [
+          function(date) {
+            const iso = date.toISOString().split('T')[0];
+            return !fechasHabilitadas.includes(iso);
+          }
+        ],
+        onDayCreate: function(dObj, dStr, fp, dayElem) {
+          const date = dayElem.dateObj.toISOString().split('T')[0];
+          if (fechasHabilitadas.includes(date)) {
+            dayElem.classList.add("available");
+          }
+        },
+        onChange: function(selectedDates, dateStr) {
+          diaSeleccionado = dateStr;
+          mostrarHorarios(diaSeleccionado);
+        }
+      });
+    }
+
+    function mostrarHorarios(dia) {
+      horariosDiv.style.display = "flex";
+      horariosDiv.innerHTML = `<h2>Turnos disponibles para ${obtenerFechaConNombreDelDia(dia)}</h2>`;
+      diasDisponibles[dia].forEach(hora => {
+        const btn = document.createElement("button");
+        btn.className = "horario-btn";
+        btn.innerText = hora;
+        btn.onclick = () => seleccionarHorario(hora);
+        horariosDiv.appendChild(btn);
+      });
+    }
+
+    function seleccionarHorario(hora) {
+      horaSeleccionada = hora;
+      formulario.style.display = "block";
+    }
+document.getElementById("reservaForm").addEventListener("submit", async function (e) {
+  e.preventDefault();
+
+  const formData = new FormData(e.target);
+  const nombre = formData.get("nombre");
+  const email = formData.get("email");
+  const telefono = formData.get("telefono");
+
+  const descripcion = `Turno para tatuaje`;
+  const precio = 15000; // Podés hacerlo dinámico si querés
+
+  try {
+    const res = await fetch('http://localhost:3001/api/reservar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description: descripcion,
+        price: precio
+      })
+    });
+
+    if (!res.ok) throw new Error("Error al generar el link de pago");
+
+    const data = await res.json();
+    alert("Serás redirigido a MercadoPago para pagar la seña.");
+    window.location.href = data.init_point;
+  } catch (error) {
+    console.error("Error en la reserva:", error);
+    alert("Hubo un problema al generar el link de pago.");
+  }
+});
+
+
+
+    cargarTurnosDesdeAPI();
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,48 @@
+import express from "express";
+import { google } from "googleapis";
+import dotenv from "dotenv";
+dotenv.config();
+import cors from "cors";
+
+
+
+
+
+const app = express();
+app.use(cors()); // Habilita CORS para todas las rutas
+const port = process.env.PORT || 3001;
+
+// Configuración de Google Calendar API
+const calendar = google.calendar("v3");
+
+const auth = new google.auth.GoogleAuth({
+  keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+  scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
+});
+
+// Endpoint para obtener eventos del calendario
+app.get("/api/turnos", async (req, res) => {
+  try {
+    const authClient = await auth.getClient();
+    const calendarId = process.env.GOOGLE_CALENDAR_ID; // Asegúrate que esté en el .env
+
+    const response = await calendar.events.list({
+      auth: authClient,
+      calendarId: calendarId, // Aquí se pasa el calendarId correctamente
+      timeMin: (new Date()).toISOString(),
+      maxResults: 10, // Limita el número de resultados
+      singleEvents: true,
+      orderBy: "startTime",
+    });
+
+    const events = response.data.items;
+    res.json(events);
+  } catch (error) {
+    console.error("Error al obtener eventos:", error);
+    res.status(500).send("Error al obtener eventos");
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Servidor corriendo en http://localhost:${port}`);
+});
